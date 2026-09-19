@@ -1044,13 +1044,33 @@ bt_status_t bt_sal_pan_write_eth(const bt_address_t* addr,
 uint16_t bt_sal_pan_get_tx_mtu(const bt_address_t* addr)
 {
     pan_conn_t* conn;
+    bt_list_node_t* node;
 
     if (!addr) {
         return 0;
     }
+
     conn = pan_find_conn(addr);
-    if (!conn || conn->state != PAN_CONN_CONNECTED) {
-        return 0;
+    if (conn && conn->state == PAN_CONN_CONNECTED) {
+        return conn->chan.tx.mtu;
     }
-    return conn->chan.tx.mtu;
+
+    /* Address lookup missed.  PAN_MAX_CONNECTIONS is 1, so there is at most
+     * one real candidate, and the two establishment paths store the peer
+     * address from different sources (outbound bt_sal_pan_connect() copies
+     * the caller's bytes, the inbound pan_server_accept() builds it from
+     * the stack's own representation) - a mismatch here used to return 0,
+     * which made the profile abort ifup with "no_negotiated_mtu" and drop a
+     * link that had just finished the BNEP handshake.  Fall back to the
+     * only connected entry instead of failing. */
+    for (node = bt_list_head(g_pan.conn_list); node;
+         node = bt_list_next(g_pan.conn_list, node)) {
+        pan_conn_t* c = (pan_conn_t*)bt_list_node(node);
+        if (c && c->state == PAN_CONN_CONNECTED) {
+            syslog(LOG_WARNING, "[pan] tx_mtu: addr lookup missed, using the "
+                "single connected entry (tx_mtu=%u)\n", c->chan.tx.mtu);
+            return c->chan.tx.mtu;
+        }
+    }
+    return 0;
 }
