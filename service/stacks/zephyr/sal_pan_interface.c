@@ -837,6 +837,18 @@ bt_status_t bt_sal_pan_init(uint8_t max_connections, uint8_t role)
     }
     BT_LOGI("%s max=%u role=%u", __func__, max_connections, role);
 
+    /* The caller-side contract for bt_list_*() is a valid list (they assert
+     * on NULL).  A soft reset keeps RAM, so g_pan can survive from the
+     * previous incarnation while the list it pointed at no longer exists;
+     * make sure init leaves a usable list behind instead of relying on the
+     * library to tolerate NULL. */
+    if (g_pan.conn_list == NULL) {
+        g_pan.conn_list = bt_list_new(NULL);
+        if (g_pan.conn_list == NULL) {
+            return BT_STATUS_NOMEM;
+        }
+    }
+
     g_pan.max_connections = max_connections;
     g_pan.role = role;
     g_pan.conn_list = bt_list_new(NULL);
