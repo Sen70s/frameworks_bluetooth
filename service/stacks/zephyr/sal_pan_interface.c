@@ -29,16 +29,16 @@
 
 #include <errno.h>
 #include <stdbool.h>
-#include <syslog.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <time.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/classic/sdp.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/l2cap.h>
-#include <zephyr/bluetooth/classic/sdp.h>
 #include <zephyr/net/buf.h>
 #include <zephyr/sys/byteorder.h>
 
@@ -70,22 +70,22 @@
 #define PAN_ETH_FRAME_MAX 1514
 /* A whole Ethernet frame becomes BNEP General Ethernet: the 15-byte BNEP
  * header replaces the 14-byte Ethernet header, so the frame grows by 1. */
-#define PAN_BNEP_OVERHEAD  1
+#define PAN_BNEP_OVERHEAD 1
 
 /* bt_l2cap_create_pdu_timeout is the exported zblue entry (l2cap.c,
  * unconditionally compiled); bt_l2cap_create_pdu is only a macro in the
  * internal l2cap_internal.h, so call the timeout variant directly. */
-struct net_buf *bt_l2cap_create_pdu_timeout(struct net_buf_pool *pool,
-                                            size_t reserve,
-                                            k_timeout_t timeout);
+struct net_buf* bt_l2cap_create_pdu_timeout(struct net_buf_pool* pool,
+    size_t reserve,
+    k_timeout_t timeout);
 
 typedef enum {
-    PAN_CONN_ACL_PENDING = 0,  /* waiting BR/EDR ACL */
-    PAN_CONN_L2CAP_PENDING,    /* waiting L2CAP channel */
-    PAN_CONN_BNEP_PENDING,     /* waiting BNEP setup response */
+    PAN_CONN_ACL_PENDING = 0, /* waiting BR/EDR ACL */
+    PAN_CONN_L2CAP_PENDING, /* waiting L2CAP channel */
+    PAN_CONN_BNEP_PENDING, /* waiting BNEP setup response */
     PAN_CONN_CONNECTED,
-    PAN_CONN_FAILED,           /* a failure has been reported */
-    PAN_CONN_RELEASED,         /* stack released the channel; free pending */
+    PAN_CONN_FAILED, /* a failure has been reported */
+    PAN_CONN_RELEASED, /* stack released the channel; free pending */
 } pan_conn_state_t;
 
 typedef struct {
@@ -93,16 +93,16 @@ typedef struct {
     pan_conn_state_t state;
     uint8_t dst_role;
     uint8_t src_role;
-    struct bt_l2cap_br_chan chan;  /* must be br_chan: BR_CHAN() walks past chan */
-    uint64_t setup_sent_ms;        /* for the 5s handshake timeout */
-    service_timer_t* setup_timer;  /* owns one ref while armed */
+    struct bt_l2cap_br_chan chan; /* must be br_chan: BR_CHAN() walks past chan */
+    uint64_t setup_sent_ms; /* for the 5s handshake timeout */
+    service_timer_t* setup_timer; /* owns one ref while armed */
     uint8_t rx_eth[PAN_ETH_FRAME_MAX];
-    int refs;                      /* list ref + transient users */
-    bool linked;                   /* still on g_pan.conn_list */
-    bool reported;                 /* DISCONNECTED already delivered */
-    bool l2cap_started;            /* connect/disconnect may own a zblue chan */
-    bool released;                 /* zblue .released callback ran */
-    bool in_worker;                /* worker holds this pointer */
+    int refs; /* list ref + transient users */
+    bool linked; /* still on g_pan.conn_list */
+    bool reported; /* DISCONNECTED already delivered */
+    bool l2cap_started; /* connect/disconnect may own a zblue chan */
+    bool released; /* zblue .released callback ran */
+    bool in_worker; /* worker holds this pointer */
 } pan_conn_t;
 
 /* Cooldown after a disconnect: the LCPU controller keeps stale state
@@ -145,13 +145,13 @@ static struct {
     bool conn_cb_registered;
     bt_list_t* conn_list;
     int conn_count;
-    struct bt_conn* acl_conn;  /* BR/EDR ACL under setup (unref'd on up/fail) */
+    struct bt_conn* acl_conn; /* BR/EDR ACL under setup (unref'd on up/fail) */
     struct bt_conn_cb conn_cb;
     uint64_t last_disconnect_ms;
-    uint8_t local_mac[6];      /* BD_ADDR byte-reversed; filled lazily */
+    uint8_t local_mac[6]; /* BD_ADDR byte-reversed; filled lazily */
     bool local_mac_valid;
-    uint32_t tx_oversize;      /* must stay 0 in normal operation */
-    uint32_t tx_nobuf;         /* ACL TX pool exhausted */
+    uint32_t tx_oversize; /* must stay 0 in normal operation */
+    uint32_t tx_nobuf; /* ACL TX pool exhausted */
 } g_pan = {
     .max_connections = 1,
     .role = 0,
@@ -365,7 +365,7 @@ static void pan_setup_timer_cancel_cb(void* data)
         service_loop_cancel_timer(timer);
         pan_conn_put(conn); /* timer reference */
     }
-    pan_conn_put(conn);     /* message reference */
+    pan_conn_put(conn); /* message reference */
 }
 
 static void pan_setup_timer_cancel(pan_conn_t* conn)
@@ -417,7 +417,7 @@ static void pan_setup_timeout(service_timer_t* timer, void* data)
         bt_l2cap_chan_disconnect(&conn->chan.chan);
     }
     service_loop_cancel_timer(timer); /* one-shot handle must be closed */
-    pan_conn_put(conn);               /* timer reference */
+    pan_conn_put(conn); /* timer reference */
 }
 
 static void pan_setup_timer_arm_cb(void* data)
@@ -680,7 +680,8 @@ static void pan_handle_control(pan_conn_t* conn, const uint8_t* ctrl,
                 pan_send_ctrl(conn, out, (size_t)n);
             }
             syslog(LOG_WARNING, "[pan] unknown ctrl 0x%02x, replied "
-                "Command Not Understood\n", ctrl[0]);
+                                "Command Not Understood\n",
+                ctrl[0]);
         } else if (pret == BNEP_ERR_BADUUID && ctrl_len >= 1
             && ctrl[0] == BNEP_CTRL_SETUP_CONN_REQ) {
             n = bnep_encode_setup_rsp(out, sizeof(out),
@@ -731,11 +732,15 @@ static void pan_handle_control(pan_conn_t* conn, const uint8_t* ctrl,
         if (info.dst_uuid16 != BNEP_UUID16_PANU) {
             n = bnep_encode_setup_rsp(out, sizeof(out),
                 BNEP_RSP_INVALID_DST_UUID);
-            if (n > 0) { pan_send_ctrl(conn, out, (size_t)n); }
+            if (n > 0) {
+                pan_send_ctrl(conn, out, (size_t)n);
+            }
             return;
         }
         n = bnep_encode_setup_rsp(out, sizeof(out), BNEP_RSP_SUCCESS);
-        if (n > 0) { pan_send_ctrl(conn, out, (size_t)n); }
+        if (n > 0) {
+            pan_send_ctrl(conn, out, (size_t)n);
+        }
         pan_setup_timer_cancel(conn);
         pan_conn_lock();
         bool was_connected = (conn->state == PAN_CONN_CONNECTED);
@@ -754,13 +759,17 @@ static void pan_handle_control(pan_conn_t* conn, const uint8_t* ctrl,
          * "Unsupported" is the correct, spec-legal reply. */
         n = bnep_encode_filter_rsp(out, sizeof(out),
             BNEP_CTRL_FILTER_NET_TYPE_RSP, BNEP_FILTER_RSP_UNSUPPORTED);
-        if (n > 0) { pan_send_ctrl(conn, out, (size_t)n); }
+        if (n > 0) {
+            pan_send_ctrl(conn, out, (size_t)n);
+        }
         return;
 
     case BNEP_CTRL_FILTER_MULTI_ADDR_SET:
         n = bnep_encode_filter_rsp(out, sizeof(out),
             BNEP_CTRL_FILTER_MULTI_ADDR_RSP, BNEP_FILTER_RSP_UNSUPPORTED);
-        if (n > 0) { pan_send_ctrl(conn, out, (size_t)n); }
+        if (n > 0) {
+            pan_send_ctrl(conn, out, (size_t)n);
+        }
         return;
 
     case BNEP_CTRL_FILTER_NET_TYPE_RSP:
@@ -773,9 +782,12 @@ static void pan_handle_control(pan_conn_t* conn, const uint8_t* ctrl,
     default:
         n = bnep_encode_cmd_not_understood(out, sizeof(out),
             info.unknown_type);
-        if (n > 0) { pan_send_ctrl(conn, out, (size_t)n); }
+        if (n > 0) {
+            pan_send_ctrl(conn, out, (size_t)n);
+        }
         syslog(LOG_WARNING, "[pan] unknown ctrl 0x%02x, replied "
-            "Command Not Understood\n", info.unknown_type);
+                            "Command Not Understood\n",
+            info.unknown_type);
         return;
     }
 }
@@ -814,7 +826,7 @@ static int pan_chan_recv(struct bt_l2cap_chan* chan, struct net_buf* buf)
     if (n < 0) {
         syslog(LOG_WARNING, "[pan] rx decode failed %d (type=0x%02x len=%u)\n",
             n, buf->data[0], buf->len);
-        return 0;   /* a bad frame is not a channel error */
+        return 0; /* a bad frame is not a channel error */
     }
     if (conn->state != PAN_CONN_CONNECTED) {
         syslog(LOG_WARNING, "[pan] rx data before setup done, dropped\n");
@@ -833,7 +845,6 @@ static int pan_chan_recv(struct bt_l2cap_chan* chan, struct net_buf* buf)
         conn->rx_eth + 14, (uint16_t)(n - 14));
     return 0;
 }
-
 
 static const struct bt_l2cap_chan_ops g_pan_chan_ops = {
     .connected = pan_chan_connected,
@@ -1834,7 +1845,8 @@ uint16_t bt_sal_pan_get_tx_mtu(const bt_address_t* addr)
             uint16_t mtu = c->chan.tx.mtu;
             pan_conn_unlock();
             syslog(LOG_WARNING, "[pan] tx_mtu: addr lookup missed, using the "
-                "single connected entry (tx_mtu=%u)\n", mtu);
+                                "single connected entry (tx_mtu=%u)\n",
+                mtu);
             return mtu;
         }
     }
